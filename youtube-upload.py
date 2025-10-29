@@ -348,10 +348,11 @@ def initialize_upload(youtube, options):
         insert_request = youtube.videos().insert(  # Create upload request
             part=",".join(body.keys()),
             body=body,
-            media_body=MediaFileUpload(options.videofile, chunksize=-1, resumable=True)  # Enable resumable upload
+            media_body=MediaFileUpload(options.videofile, chunksize=1024*1024*16, resumable=True)  # Enable resumable upload
         )
 
-        response = resumable_upload(insert_request)  # Perform upload
+        file_size = os.path.getsize(options.videofile)
+        response = resumable_upload(insert_request, file_size)  # Perform upload
         if response is None:  # Check if upload failed
             logger.error("Upload failed after retries.")
             sys.exit(1)  # Exit with non-zero status code
@@ -398,15 +399,50 @@ def upload_thumbnail(youtube, video_id, thumbnail_path):
     except HttpError as e:
         logger.error(f"An error occurred while uploading the thumbnail: {e}")
 
-def resumable_upload(insert_request):
+def resumable_upload(insert_request, file_size):
     """Implement resumable upload with exponential backoff strategy."""
     response = None
     error = None
     retry = 0
+    start_time = time.time()
     while response is None and retry <= MAX_RETRIES:  # Retry up to MAX_RETRIES
         try:
-            logger.info("Uploading file...")
             status, response = insert_request.next_chunk()  # Upload next chunk
+
+            progress = status.progress() or 0.0
+            percent = int(progress * 100)
+            uploaded_gb = (progress * file_size) / (1024 ** 3)
+            total_gb = file_size / (1024 ** 3)
+            bar_length = 60
+            filled_length = int(bar_length * progress)
+            bar = '█' * filled_length + '-' * (bar_length - filled_length)
+
+            # Estimate time remaining
+            elapsed = time.time() - start_time
+            if progress > 0:
+                estimated_total_time = elapsed / progress
+                remaining = estimated_total_time - elapsed
+            else:
+                remaining = 0
+
+            # Format time nicely
+            def fmt_time(seconds):
+                if seconds < 60:
+                    return f"{seconds:.1f}s"
+                elif seconds < 3600:
+                    m, s = divmod(int(seconds), 60)
+                    return f"{m}m {s}s"
+                else:
+                    h, m = divmod(int(seconds) // 60, 60)
+                    return f"{h}h {m}m"
+
+            sys.stdout.write(
+                f"\rUploading |{bar}| {percent:3d}%  "
+                f"({uploaded_gb:6.2f} GB / {total_gb:6.2f} GB)  "
+                f"ETA: {fmt_time(remaining)}"
+            )
+            sys.stdout.flush()
+
             if response is not None:
                 if 'id' in response:  # Check if upload succeeded
                     logger.info(f"Video id '{response['id']}' was successfully uploaded.")
