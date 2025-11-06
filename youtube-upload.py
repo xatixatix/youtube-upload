@@ -409,39 +409,40 @@ def resumable_upload(insert_request, file_size):
         try:
             status, response = insert_request.next_chunk()  # Upload next chunk
 
-            progress = status.progress() or 0.0
-            percent = int(progress * 100)
-            uploaded_gb = (progress * file_size) / (1024 ** 3)
-            total_gb = file_size / (1024 ** 3)
-            bar_length = 60
-            filled_length = int(bar_length * progress)
-            bar = '█' * filled_length + '-' * (bar_length - filled_length)
+            if status:
+                progress = status.progress() or 0.0
+                percent = int(progress * 100)
+                uploaded_gb = (progress * file_size) / (1024 ** 3)
+                total_gb = file_size / (1024 ** 3)
+                bar_length = 60
+                filled_length = int(bar_length * progress)
+                bar = '█' * filled_length + '-' * (bar_length - filled_length)
 
-            # Estimate time remaining
-            elapsed = time.time() - start_time
-            if progress > 0:
-                estimated_total_time = elapsed / progress
-                remaining = estimated_total_time - elapsed
-            else:
-                remaining = 0
-
-            # Format time nicely
-            def fmt_time(seconds):
-                if seconds < 60:
-                    return f"{seconds:.1f}s"
-                elif seconds < 3600:
-                    m, s = divmod(int(seconds), 60)
-                    return f"{m}m {s}s"
+                # Estimate time remaining
+                elapsed = time.time() - start_time
+                if progress > 0:
+                    estimated_total_time = elapsed / progress
+                    remaining = estimated_total_time - elapsed
                 else:
-                    h, m = divmod(int(seconds) // 60, 60)
-                    return f"{h}h {m}m"
+                    remaining = 0
 
-            sys.stdout.write(
-                f"\rUploading |{bar}| {percent:3d}%  "
-                f"({uploaded_gb:6.2f} GB / {total_gb:6.2f} GB)  "
-                f"ETA: {fmt_time(remaining)}"
-            )
-            sys.stdout.flush()
+                # Format time nicely
+                def fmt_time(seconds):
+                    if seconds < 60:
+                        return f"{seconds:.1f}s"
+                    elif seconds < 3600:
+                        m, s = divmod(int(seconds), 60)
+                        return f"{m}m {s}s"
+                    else:
+                        h, m = divmod(int(seconds) // 60, 60)
+                        return f"{h}h {m}m"
+
+                sys.stdout.write(
+                    f"\rUploading |{bar}| {percent:3d}%  "
+                    f"({uploaded_gb:6.2f} GB / {total_gb:6.2f} GB)  "
+                    f"ETA: {fmt_time(remaining)}"
+                )
+                sys.stdout.flush()
 
             if response is not None:
                 if 'id' in response:  # Check if upload succeeded
